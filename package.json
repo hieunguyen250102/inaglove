@@ -1,0 +1,19 @@
+{
+  "name": "in-a-grove",
+  "private": true,
+  "description": "In a Grove (Oink Games, Revised 2021) — realtime online fan version",
+  "scripts": {
+    "postinstall": "npm install --prefix server --include=dev && npm install --prefix client --include=dev",
+    "dev": "concurrently -k -n server,client -c blue,red \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run build --prefix client && npm run build --prefix server",
+    "start": "npm start --prefix server",
+    "test": "npm test --prefix server",
+    "typecheck": "npm run typecheck --prefix server && tsc --noEmit -p client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

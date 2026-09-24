@@ -1,0 +1,17 @@
+# Render Blueprint: one Node web service that runs the Socket.IO server
+# and also serves the built client (so the game works from this URL alone).
+services:
+  - type: web
+    name: in-a-grove
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Comma-separated browser origins allowed to connect, e.g. https://in-a-grove.vercel.app
+      # Leave unset to allow any origin.
+      - key: CLIENT_ORIGIN
+        sync: false
