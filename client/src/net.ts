@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { createAuthClient } from 'oink-kit/client';
 
 /**
  * VITE_SERVER_URL points the client at the Socket.IO server (e.g. your Render URL)
@@ -6,9 +7,13 @@ import { io } from 'socket.io-client';
  */
 const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string | undefined)?.replace(/\/$/, '') || undefined;
 
+/** Email login (shared with the other Oink games); the token rides on every socket handshake. */
+export const authClient = createAuthClient({ storagePrefix: 'grove', serverUrl: SERVER_URL ?? '' });
+
 export const socket = io(SERVER_URL, {
   transports: ['websocket', 'polling'],
   reconnectionDelayMax: 4000,
+  auth: authClient.socketAuth,
 });
 
 export async function request<T = unknown>(event: string, payload?: unknown): Promise<T> {

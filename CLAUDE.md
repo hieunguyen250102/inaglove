@@ -26,6 +26,7 @@ The dev server entry is `server/src/dev.ts`. It forces port 3001 even when the s
 - **The server is authoritative and in-memory.** `server/src/room.ts` (`Room`) holds all game state and every rule. It has no socket code, so it can be unit-tested with an injected rng and clock. `server/src/index.ts` is only the Socket.IO transport. Each handler runs a `Room` method, acks `{ok, error}`, and then broadcasts. `GameError` messages are user-facing Vietnamese strings.
 - **Views are per player, and secrecy lives on the server.** `room.viewFor(token)` builds a separate `GameView` for each socket. Hidden figure values (other players' hands, unpeeked suspects, the victim) are never sent until `round.reveal` exists. Keep it that way whenever you add fields.
 - **Identity:** `token` is a secret stored per tab in the client's `sessionStorage`. `id` is public. Reconnecting with the same token rejoins the same seat. A player who leaves mid-game keeps the seat, which gets a `left:` token, and `Room.tick()` (run every 1 s) auto-plays for them after `AUTOPLAY_AFTER_MS`.
+- **Login:** email-code login comes from the shared `oink-kit` package (github:hieunguyen250102/oink-kit). The server mounts `authHandler` (`POST /auth/request`, `/auth/verify`) and `socketAuth`; `room:join` needs a login and `room:create` also needs `canHost` (`HOST_EMAILS`). The seat token above is unchanged: login is only a gate. The client keeps the login in `localStorage` (`grove.session.v1`, see `authClient` in `net.ts`) and sends it in the socket handshake; the store exposes `account`/`login`/`logout`. Without a mail provider outside production, the code is printed on the server and returned as `devCode`. In dev, Vite proxies `/auth` to :3001 too.
 - **`shared/`** holds the types and the pure rules (`findMurderer`, `figuresFor`, constants). Both sides import it: the client through the `@shared` alias (vite.config.ts and tsconfig paths), the server through relative paths bundled by esbuild.
 - **Client animation choreography** is derived from state, not pushed by the server:
   - `lastAction` (with a `seq`) drives short local effects, such as peek flashes and "X đang xem…" lifts.
@@ -52,5 +53,5 @@ Implement the **2021 Revised** rules:
 
 - `render.yaml` sets up one Render web service that builds both packages and serves the client.
 - `vercel.json` builds only `client/` from the repo root. `VITE_SERVER_URL` must point at the Render URL.
-- The server reads `PORT` and `CLIENT_ORIGIN` (a comma-separated CORS allowlist; unset allows all origins).
+- The server reads `PORT` and `CLIENT_ORIGIN` (a comma-separated CORS allowlist, `*` wildcards allowed; unset allows all origins), plus the login vars `SESSION_SECRET`, `MAIL_RELAY_URL`, `MAIL_RELAY_SECRET` and `HOST_EMAILS`.
 - State is in memory, so run a single instance only.

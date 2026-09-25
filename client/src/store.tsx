@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ChatMessage, GameView, JoinResult, Reaction } from '@shared/types';
-import { request, socket, storage } from './net';
+import type { Session as Account, SessionUser } from 'oink-kit/client';
+import { authClient, request, socket, storage } from './net';
 
 interface Toast {
   id: number;
@@ -15,6 +16,10 @@ interface Store {
   reactions: Reaction[];
   connected: boolean;
   toasts: Toast[];
+  /** the email login, or null before signing in */
+  account: Account | null;
+  login: (account: Account) => void;
+  logout: () => void;
   create: (name: string) => Promise<void>;
   join: (code: string, name: string) => Promise<void>;
   leave: () => Promise<void>;
@@ -37,6 +42,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [connected, setConnected] = useState(socket.connected);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [account, setAccount] = useState<Account | null>(() => authClient.loadSession());
   const toastId = useRef(0);
 
   const toast = useCallback((text: string, tone: Toast['tone'] = 'error') => {
@@ -54,7 +60,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const rejoin = useCallback(async () => {
     const session = storage.session();
-    if (!session) return;
+    // Without a login the server refuses the seat; keep it and retry once signed in.
+    if (!session || !authClient.loadSession()) return;
     try {
       adopt(await request<JoinResult>('room:join', { code: session.code, token: session.token, name: storage.name() || 'Thám tử' }));
     } catch {
@@ -82,6 +89,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setReactions((list) => [...list, r]);
       setTimeout(() => setReactions((list) => list.filter((x) => x.id !== r.id)), 2400);
     };
+    // The server's verdict on our token: drop a stale login, pick up a changed canHost.
+    const onSession = ({ user }: { user: SessionUser | null }) => {
+      const current = authClient.loadSession();
+      if (!current) return;
+      if (!user) {
+        authClient.saveSession(null);
+        setAccount(null);
+      } else if (user.canHost !== current.user.canHost) {
+        const next = { ...current, user };
+        authClient.saveSession(next);
+        setAccount(next);
+      }
+    };
     const onKicked = () => {
       storage.setSession(null);
       setView(null);
@@ -96,6 +116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     socket.on('chat:typing', onTyping);
     socket.on('react', onReact);
     socket.on('kicked', onKicked);
+    socket.on('session', onSession);
     if (socket.connected) void rejoin();
     const sweep = setInterval(() => {
       setTyping((t) => {
@@ -113,6 +134,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       socket.off('chat:typing', onTyping);
       socket.off('react', onReact);
       socket.off('kicked', onKicked);
+      socket.off('session', onSession);
       clearInterval(sweep);
     };
   }, [rejoin, toast]);
@@ -126,6 +148,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       connected,
       toasts,
       toast,
+      account,
+      login: (next) => {
+        authClient.saveSession(next);
+        setAccount(next);
+        // reconnect so the server sees the new token
+        socket.disconnect().connect();
+      },
+      logout: () => {
+        authClient.saveSession(null);
+        setAccount(null);
+        socket.disconnect().connect();
+      },
       create: async (name) => {
         storage.setName(name);
         adopt(await request<JoinResult>('room:create', { name }));
@@ -154,7 +188,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [view, chat, typing, reactions, connected, toasts, toast, adopt],
+    [view, chat, typing, reactions, connected, toasts, toast, adopt, account],
   );
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;

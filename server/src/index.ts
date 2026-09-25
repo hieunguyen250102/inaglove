@@ -4,21 +4,25 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server, type Socket } from 'socket.io';
+import { authError, authHandler, createAuth, originPolicy, socketAuth, socketUser } from 'oink-kit/server';
 import { REACTIONS, type Ack, type ChipColor, type JoinResult } from '../../shared/types';
 import { GameError, Room } from './room';
 
 const PORT = Number(process.env.PORT ?? 3001);
-// Comma-separated list of allowed browser origins (e.g. your Vercel URL). Empty = allow all.
-const ORIGINS = (process.env.CLIENT_ORIGIN ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
+// Comma-separated list of allowed browser origins (e.g. your Vercel URL); `*` wildcards work. Empty = allow all.
+const origins = originPolicy(process.env.CLIENT_ORIGIN);
+// Email-code login (shared with the other Oink games). Opening a case needs canHost (HOST_EMAILS).
+const auth = createAuth({ brand: 'In a Grove', devSecret: 'grove-dev-secret', mailAccent: '#f3ecdc' });
 const ROOM_TTL_MS = 30 * 60_000;
 
 const app = express();
+app.set('trust proxy', 1);
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, rooms: rooms.size });
+  // hostRestricted false = HOST_EMAILS unset, so anyone who logs in can open a room
+  res.json({ ok: true, rooms: rooms.size, hostRestricted: auth.hostingIsRestricted(), allowedOrigins: origins.origins });
 });
+// POST /auth/request {email}, POST /auth/verify {email, code, challenge}
+app.use(authHandler(auth, { allowOrigin: origins.allows }));
 
 // Single-service deploys: serve the built client when it sits next to the server.
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +38,7 @@ if (existsSync(path.join(clientDist, 'index.html'))) {
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
-  cors: { origin: ORIGINS.length ? ORIGINS : true },
+  cors: { origin: origins.corsOrigin },
   pingInterval: 20_000,
   pingTimeout: 25_000,
 });
@@ -72,9 +76,13 @@ interface SocketData {
   chatTimes: number[];
 }
 
+/** Anyone may connect; socket.data.user is set only for a valid login token. */
+io.use(socketAuth(auth));
+
 io.on('connection', (socket: Socket) => {
   const data = socket.data as SocketData;
   data.chatTimes = [];
+  socket.emit('session', { user: socketUser(socket) });
 
   const current = () => {
     const room = data.code ? rooms.get(data.code) : undefined;
@@ -122,9 +130,19 @@ io.on('connection', (socket: Socket) => {
     broadcast(room);
   };
 
-  on<{ name: string }>('room:create', ({ name }) => enter(createRoom(), name));
+  /** Seats need a login; opening a case needs a host account. */
+  const requireLogin = (host = false) => {
+    const denied = authError(socketUser(socket), { host });
+    if (denied) throw new GameError(denied);
+  };
+
+  on<{ name: string }>('room:create', ({ name }) => {
+    requireLogin(true);
+    return enter(createRoom(), name);
+  });
 
   on<{ code: string; name: string; token?: string }>('room:join', ({ code, name, token }) => {
+    requireLogin();
     const room = rooms.get(String(code ?? '').trim().toUpperCase());
     if (!room) throw new GameError('Không tìm thấy phòng này.');
     return enter(room, name, token);

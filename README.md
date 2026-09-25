@@ -49,6 +49,19 @@ Vercel không giữ được kết nối WebSocket lâu dài, nên **server ph�
 4. Deploy lại Vercel.
 5. (Tuỳ chọn) Trên Render, đặt `CLIENT_ORIGIN` = `https://<app>.vercel.app` để chỉ cho phép trang Vercel kết nối. Có thể liệt kê nhiều origin, ngăn cách bằng dấu phẩy.
 
+### Đăng nhập
+
+Người chơi phải đăng nhập bằng mã gửi qua email trước khi mở hoặc vào phòng. Phần này dùng package chung [oink-kit](https://github.com/hieunguyen250102/oink-kit), giống các game Oink khác. Đặt các biến sau trên Render:
+
+| Biến | Ý nghĩa |
+| --- | --- |
+| `SESSION_SECRET` | Khoá ký phiên đăng nhập. Blueprint tự sinh; đừng đổi, đổi là mọi người bị đăng xuất. |
+| `MAIL_RELAY_URL` | Hàm gửi mail dùng chung, ví dụ `https://oink-mail.vercel.app/api/send-code`. |
+| `MAIL_RELAY_SECRET` | Chuỗi bí mật, giống hệt giá trị đặt ở relay. |
+| `HOST_EMAILS` | Email được mở vụ án mới, ngăn cách bằng dấu phẩy. Để trống thì ai đăng nhập cũng mở được. |
+
+Chạy ở máy mà không cấu hình gửi mail thì mã được in ra console của server và hiện luôn trên màn hình để bấm vào. `GET /health` cho biết `hostRestricted` và `allowedOrigins`.
+
 ### Lưu ý
 
 - Gói Render miễn phí sẽ **ngủ** sau khoảng 15 phút không dùng. Lần vào đầu tiên có thể mất 30–60 giây.
