@@ -76,7 +76,7 @@ interface SocketData {
   chatTimes: number[];
 }
 
-/** Anyone may connect; socket.data.user is set only for a valid login token. */
+/** Anyone may connect and join; socket.data.user (a valid login) is only needed to create a room. */
 io.use(socketAuth(auth));
 
 io.on('connection', (socket: Socket) => {
@@ -130,19 +130,18 @@ io.on('connection', (socket: Socket) => {
     broadcast(room);
   };
 
-  /** Seats need a login; opening a case needs a host account. */
-  const requireLogin = (host = false) => {
-    const denied = authError(socketUser(socket), { host });
+  /** Opening a case needs a host account; taking a seat needs no login. */
+  const requireHost = () => {
+    const denied = authError(socketUser(socket), { host: true });
     if (denied) throw new GameError(denied);
   };
 
   on<{ name: string }>('room:create', ({ name }) => {
-    requireLogin(true);
+    requireHost();
     return enter(createRoom(), name);
   });
 
   on<{ code: string; name: string; token?: string }>('room:join', ({ code, name, token }) => {
-    requireLogin();
     const room = rooms.get(String(code ?? '').trim().toUpperCase());
     if (!room) throw new GameError('Không tìm thấy phòng này.');
     return enter(room, name, token);

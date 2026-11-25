@@ -60,8 +60,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const rejoin = useCallback(async () => {
     const session = storage.session();
-    // Without a login the server refuses the seat; keep it and retry once signed in.
-    if (!session || !authClient.loadSession()) return;
+    if (!session) return;
     try {
       adopt(await request<JoinResult>('room:join', { code: session.code, token: session.token, name: storage.name() || 'Thám tử' }));
     } catch {

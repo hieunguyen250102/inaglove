@@ -51,7 +51,7 @@ Vercel không giữ được kết nối WebSocket lâu dài, nên **server ph�
 
 ### Đăng nhập
 
-Người chơi phải đăng nhập bằng mã gửi qua email trước khi mở hoặc vào phòng. Phần này dùng package chung [oink-kit](https://github.com/hieunguyen250102/oink-kit), giống các game Oink khác. Đặt các biến sau trên Render:
+Chỉ chủ phòng cần đăng nhập (mã gửi qua email, email phải nằm trong `HOST_EMAILS`) để mở vụ án; người chơi khác chỉ nhập tên và mã phòng là vào được. Phần này dùng package chung [oink-kit](https://github.com/hieunguyen250102/oink-kit), giống các game Oink khác. Đặt các biến sau trên Render:
 
 | Biến | Ý nghĩa |
 | --- | --- |

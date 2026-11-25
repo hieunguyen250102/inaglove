@@ -4,7 +4,7 @@ import { TitleArt } from '../art/GroveBackdrop';
 import { FigureFront } from '../art/Figure';
 import { ChipFace } from '../art/Chip';
 import { useEmailLogin } from 'oink-kit/react';
-import type { Session as Account } from 'oink-kit/client';
+import { roomCodeInput, type Session as Account } from 'oink-kit/client';
 import { authClient, storage } from '../net';
 import { useStore } from '../store';
 
@@ -13,6 +13,8 @@ export function Home({ onRules }: { onRules: () => void }) {
   const [name, setName] = useState(storage.name());
   const [code, setCode] = useState(() => new URLSearchParams(window.location.search).get('phong')?.toUpperCase() ?? '');
   const [busy, setBusy] = useState(false);
+  // Only the host logs in. Also reopened when the mail app reloaded the tab mid-login.
+  const [hostLogin, setHostLogin] = useState(() => !!authClient.loadPendingLogin());
 
   const run = async (fn: () => Promise<void>) => {
     if (!name.trim()) return toast('Hãy nhập tên thám tử của bạn.');
@@ -74,19 +76,29 @@ export function Home({ onRules }: { onRules: () => void }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, delay: 0.2, ease: 'easeOut' }}
       >
-        {account ? (
+        {hostLogin && !account ? (
+          <LoginForm
+            onLogin={login}
+            onCancel={() => {
+              authClient.savePendingLogin(null);
+              setHostLogin(false);
+            }}
+          />
+        ) : (
           <>
-            <div className="account">
-              <span>{account.user.email}</span>
-              <button className="btn-link" onClick={logout}>
-                Đăng xuất
-              </button>
-            </div>
+            {account && (
+              <div className="account">
+                <span>{account.user.email}</span>
+                <button className="btn-link" onClick={logout}>
+                  Đăng xuất
+                </button>
+              </div>
+            )}
             <label className="field">
               <span>Tên thám tử</span>
               <input value={name} maxLength={16} onChange={(e) => setName(e.target.value)} placeholder="VD: Kanazawa" autoFocus />
             </label>
-            {account.user.canHost ? (
+            {account?.user.canHost ? (
               <>
                 <button className="btn btn-primary btn-lg" disabled={busy || !connected} onClick={() => run(() => create(name.trim()))}>
                   Mở vụ án mới
@@ -96,7 +108,7 @@ export function Home({ onRules }: { onRules: () => void }) {
                 </div>
               </>
             ) : (
-              <p className="hint">Tài khoản này vào được phòng có sẵn, không mở vụ án mới được.</p>
+              <p className="hint">Nhập mã phòng mà chủ phòng gửi cho bạn để vào vụ án.</p>
             )}
             <form className="join-row" onSubmit={onJoin}>
               <input
@@ -104,16 +116,26 @@ export function Home({ onRules }: { onRules: () => void }) {
                 value={code}
                 maxLength={4}
                 placeholder="MÃ"
-                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))}
+                // roomCodeInput undoes Vietnamese Telex rewrites, e.g. a lone "w" turning into "ư"
+                onChange={(e) =>
+                  setCode(roomCodeInput(e.target.value, code, 4, e.target.selectionStart).replace(/[^A-Z]/g, ''))
+                }
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="characters"
+                spellCheck={false}
                 aria-label="Mã phòng"
               />
               <button className="btn btn-secondary" disabled={busy || !connected} type="submit">
                 Vào phòng
               </button>
             </form>
+            {!account && (
+              <button className="btn-link" onClick={() => setHostLogin(true)}>
+                Bạn là chủ phòng? Đăng nhập để mở vụ án
+              </button>
+            )}
           </>
-        ) : (
-          <LoginForm onLogin={login} />
         )}
         <button className="btn-link" onClick={onRules}>
           Xem luật chơi
@@ -125,7 +147,7 @@ export function Home({ onRules }: { onRules: () => void }) {
 }
 
 /** Email → 6-digit code. The behaviour lives in oink-kit's useEmailLogin; this is only the grove's look. */
-function LoginForm({ onLogin }: { onLogin: (account: Account) => void }) {
+function LoginForm({ onLogin, onCancel }: { onLogin: (account: Account) => void; onCancel: () => void }) {
   const login = useEmailLogin(authClient, { onLogin });
   const { email, code, busy, error, notice, devCode, cooldown } = login;
 
@@ -138,7 +160,7 @@ function LoginForm({ onLogin }: { onLogin: (account: Account) => void }) {
           void login.send();
         }}
       >
-        <p className="hint">Đăng nhập bằng email để vào vụ án: chúng tôi sẽ gửi cho bạn một mã 6 số.</p>
+        <p className="hint">Chỉ chủ phòng cần đăng nhập để mở vụ án. Nhập email, chúng tôi sẽ gửi cho bạn một mã 6 số.</p>
         <label className="field">
           <span>Email</span>
           <input
@@ -154,6 +176,9 @@ function LoginForm({ onLogin }: { onLogin: (account: Account) => void }) {
         {error && <p className="login-error">{error}</p>}
         <button type="submit" className="btn btn-primary btn-lg" disabled={!login.emailOk || busy}>
           {busy ? 'Đang gửi…' : 'Gửi mã đăng nhập'}
+        </button>
+        <button type="button" className="btn-link" onClick={onCancel}>
+          ← Quay lại, tôi chỉ vào phòng
         </button>
       </form>
     );
